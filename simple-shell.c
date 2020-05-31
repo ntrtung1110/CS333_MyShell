@@ -37,11 +37,19 @@ int parseOutputRedirection(char *command, char **splitted){
 	}
 	if (splitted[0] == NULL || splitted[1] == NULL)
 		return 0; // do not have ">" separator
-
+	return 1;
 }
 
-int parseInputRedirection(){
+int parseInputRedirection(char *command, char **splitted){
 	// This function will be used for splitting command and arguments by ">" character
+	for (int i = 0; i < 2; i++){
+		splitted[i] = strsep(&command, "<");
+		if(splitted[i] == NULL)
+			break;
+	}
+	if (splitted[0] == NULL || splitted[1] == NULL)
+		return 0; // do not have "<" separator
+	return 1;
 }
 
 int parsePipe(){
@@ -111,7 +119,7 @@ int main(void) {
 				//start to execute command using execvp() system call
 				//printf("%c", *args[1]);
 				//printf("%c", *args[2]);
-				//printf(args[0]);
+				printf(args[0]);
 				if (execvp(args[0], args) < 0){
 					printf("\nCould not execute command.."); 				
 				}
@@ -120,9 +128,6 @@ int main(void) {
 				// checking ampersand here
 			}		
 		}		
-		
-
-
 				
 		//If command contains input redirection argument
 		//	fork a child process invoking fork() system call and perform the followings in the child process:
@@ -134,7 +139,65 @@ int main(void) {
 		//		invoke wait() system call in parent process.
 		//
 		//	
+
+		if(parseInputRedirection(command, splitted)){
+			// splitted[0]: first part contains command and arguments
+			// splitted[1]: second part contains redirected destination file and the remaining things
+
+			parseSpace(splitted[0], args); //args are results after performing parsing of the first part 
+			char *sub_args[MAX_LENGTH/2 + 1]; 
+			parseSpace(splitted[1], sub_args); //sub args are results after performing parsing of the second part
+
+			pid_t pid = fork();//create child process
+			if (pid == -1){
+				printf("\nFailed to fork child..");
+				return;
+			} else if(pid == 0){
+				// open file by using system call open()
+				int fd = open(sub_args[0], O_RDONLY, 0644); //sub_args[0] contain file name
+				// handle returned results
+				if (fd<0){ // error opening file
+					perror("r1");
+					exit(1);
+				}
+				// successfully opening file, then do the copy by invoking dup2() system call
+				dup2(fd, 0) ; // here 0 is fd(file descriptor) of stdin
+				// close the opened file by invoking close() system call
+				close(fd);
+
+				/*// copy arguments from input file line by line to command arguments		
+					// open file
+					FILE *fp;
+					char str[1000]; // maximum number of character read in one line is 1000
+					char *filename = sub_args[0];
+
+					fp = fopen(filename, "r");
+					if (fp==NULL){
+						//handle error
+						printf("Could not open file");					
+					} 
+					else{
+						int start = 1;//args[0] is used for command options
+						while(fgets(str, 1000, fp) != NULL){
+							args[start] = str;
+							start++;
+						}
+							
+					}
+					fclose(fp);
+				//start to execute command using execvp() system call*/
+				
+				if (execvp(args[0], args) < 0){
+					printf("\nCould not execute command.."); 				
+				}
+				exit(0);
+			} else {
+				// checking ampersand here
+			}		
+		}		
 		
+
+
 		//If command contains pipe argument
 		//	fork a child process invoking fork() system call and perform the followings in the child process:
 		//		create a pipe invoking pipe() system call

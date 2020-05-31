@@ -1,3 +1,0 @@
-list_dir.txt
-simple-shell
-simple-shell.c
