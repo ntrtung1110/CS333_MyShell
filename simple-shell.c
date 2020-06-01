@@ -52,8 +52,16 @@ int parseInputRedirection(char *command, char **splitted){
 	return 1;
 }
 
-int parsePipe(){
+int parsePipe(char *command, char **splitted){
 	// This function will be used for splitting command and arguments by "|" character
+	for (int i = 0; i < 2; i++){
+		splitted[i] = strsep(&command, "|");
+		if(splitted[i] == NULL)
+			break;
+	}
+	if (splitted[0] == NULL || splitted[1] == NULL)
+		return 0; // do not have "<" separator
+	return 1;
 }
 
 int parseGeneral(){
@@ -104,7 +112,7 @@ int main(void) {
 			if (pid == -1){
 				printf("\nFailed to fork child..");
 				return;
-			} else if(pid == 0){
+			} else if(pid == 0){ //inside child process
 				// open file by using system call open()
 				int fd = open(sub_args[0], O_WRONLY | O_CREAT, 0644); //sub_args[0] contain file name
 				// handle returned results
@@ -124,8 +132,8 @@ int main(void) {
 					printf("\nCould not execute command.."); 				
 				}
 				exit(0);
-			} else {
-				// checking ampersand here
+			} else { //inside parent process
+				wait(NULL);  // wait for child process
 			}		
 		}		
 				
@@ -152,7 +160,7 @@ int main(void) {
 			if (pid == -1){
 				printf("\nFailed to fork child..");
 				return;
-			} else if(pid == 0){
+			} else if(pid == 0){ // inside child process
 				// open file by using system call open()
 				int fd = open(sub_args[0], O_RDONLY, 0644); //sub_args[0] contain file name
 				// handle returned results
@@ -192,11 +200,11 @@ int main(void) {
 				}
 				exit(0);
 			} else {
-				// checking ampersand here
+				// inside parent process
+				wait(NULL);  //wait for child process
 			}		
 		}		
 		
-
 
 		//If command contains pipe argument
 		//	fork a child process invoking fork() system call and perform the followings in the child process:
@@ -217,6 +225,74 @@ int main(void) {
 		//		change the process image with the new process image according to the UNIX command using execvp() system call
 		//	If command does not conatain & (ampersand) at the end
 		//		invoke wait() system call in parent process.
+		if(parsePipe(command, splitted)){
+			//splitted[0]: contain first process of the pipe
+			//splitted[1]: contain second process of the pipe
+			parseSpace(splitted[0], args); //parsing command and argument of left-hand-side part pipe
+			char *args_pipe[MAX_LENGTH/2 + 1]; 
+			parseSpace(splitted[1], args_pipe); //parsing command and argument of right-hand-side part pipe 
+			int pipefd[2]; //storing file descriptor of the two part of pipe(1 is used for writing, 0 is used for reading)	
+			pid_t p1, p2;//storing process id of two part of pipe
+			
+			//check whether pipe can be initialized or not
+			if (pipe(pipefd) < 0){
+				printf("\nPipe could not be initialized");		
+			}
+			
+			p1 = fork(); // fork a child process 
+			if(p1<0){
+				printf("\nFailed to fork p1");
+			}
+			else if (p1==0){//inside child process
+				close(pipefd[0]);// close read end, only need write end 
+				dup2(pipefd[1], STDOUT_FILENO);
+				close(pipefd[1]);// now close read end fd					
+				
+				if (execvp(args[0], args) < 0){
+					printf("\nFailed to execute first command ..");
+					exit(0);
+				}
+						
+			}
+			else {
+				wait(NULL); //waite for first process to be finished
+				p2 = fork(); // fork another child process
+				if (p2<0){
+					printf("\nFailed to fork p2");			
+				}
+				else if (p2==0){
+					close(pipefd[1]); // close write end, only need read end
+					dup2(pipefd[0], STDIN_FILENO);
+					close(pipefd[0]);
+					if (execvp(args_pipe[0], args_pipe)<0){
+						printf("\nFailed to execute second command ..");
+						exit(0);				
+					}		
+				}	
+				else{
+					wait(NULL);
+				}
+			}
+		}
+		else{
+			//fork child process
+			pid_t pid = fork();//create child process
+			parseSpace(command, args);
+			if (pid == -1){
+				printf("\nFailed to fork child..");
+				return;
+			} else if(pid == 0){
+				if (execvp(args[0], args) < 0){
+					printf("\nCould not execute command.."); 				
+				}
+				exit(0);
+			} else {
+				// checking ampersand here
+				wait(NULL);
+			}
+					
+		}
+			
 	}
 
 	return 0;
